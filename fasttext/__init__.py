@@ -1,6 +1,6 @@
 from .fasttext import skipgram
 from .fasttext import cbow
-from .fasttext import load_model
+from .fasttext import load_model, load_modelwrapper
 from .fasttext import supervised
 
 import os

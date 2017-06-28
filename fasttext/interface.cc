@@ -55,6 +55,9 @@ void FastTextModel::setArgs(std::shared_ptr<Args> args)
     if(args->model == model_name::sup) {
         modelName = "supervised";
     }
+    if(args->model == model_name::sent2vec) {
+        modelName = "sent2vec";
+    }
     bucket = args->bucket;
     minn = args->minn;
     maxn = args->maxn;
@@ -118,6 +121,30 @@ std::vector<real> FastTextModel::getVectorWrapper(std::string word)
     }
     std::vector<real> vector(vec.data_, vec.data_ + vec.m_);
     return vector;
+}
+
+std::vector<real> FastTextModel::getSentVectorWrapper(std::string sent)
+{
+    std::istringstream iss (sent);
+
+    std::vector<int32_t> line, labels;
+    Vector vec(dim);
+
+    _dict->getLine(iss, line, labels, _model->rng);
+    _dict->addNgrams(line, wordNgrams);
+    vec.zero();
+    for (auto it = line.cbegin(); it != line.cend(); ++it) {
+      vec.addRow(*_input_matrix, *it);
+    }
+    if (!line.empty()) {
+      vec.mul(1.0 / line.size());
+    }
+
+    std::vector<real> ret_vec(dim);
+    for(auto i = 0; i < dim; i++){
+        ret_vec[i] = vec[i];
+    }
+    return ret_vec;
 }
 
 std::vector<double> FastTextModel::classifierTest(std::string filename,

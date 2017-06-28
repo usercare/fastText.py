@@ -44,6 +44,10 @@ cdef class FastTextModelWrapper:
     def get_vector(self, word, encoding):
         word_bytes = bytes(word, encoding)
         return self.fm.getVectorWrapper(word_bytes)
+    
+    def get_sentvector(self, sent, encoding):
+        sent_bytes = bytes(sent, encoding)
+        return self.fm.getSentVectorWrapper(sent_bytes)
 
     def classifier_test(self, test_file, k, encoding):
         test_file = bytes(test_file, encoding)
@@ -170,7 +174,24 @@ def load_model(filename, label_prefix='', encoding='utf-8'):
             labels.append(label.replace(label_prefix, ''))
         return SupervisedModel(model, labels, label_prefix, encoding)
     else:
-        raise ValueError('fastText: model name is not valid!')
+        raise ValueError('fastText: model name "{}" is not valid!'.format(model_name))
+
+
+def load_modelwrapper(filename, label_prefix='', encoding='utf-8'):
+    # Check if the filename is readable
+    if not os.path.isfile(filename):
+        raise ValueError('fastText: trained model cannot be opened!')
+
+    model = FastTextModelWrapper()
+    filename_bytes = bytes(filename, encoding)
+    try:
+        # How we load the dictionary
+        loadModelWrapper(filename_bytes, model.fm)
+    except:
+        raise Exception('fastText: Cannot load ' + filename +
+                ' due to C++ extension failed to allocate the memory')
+
+    return model
 
 # Wrapper for train(int argc, char *argv) C++ function in cpp/src/fasttext.cc
 def train_wrapper(model_name, input_file, output, label_prefix, lr, dim, ws,
