@@ -16,7 +16,7 @@
 
 namespace fasttext {
 
-enum class model_name : int {cbow=1, sg, sup};
+enum class model_name : int {cbow=1, sg, sup, sent2vec};
 enum class loss_name : int {hs=1, ns, softmax};
 
 class Args {
@@ -29,6 +29,7 @@ class Args {
     int lrUpdateRate;
     int dim;
     int ws;
+    int dropoutK;
     int epoch;
     int minCount;
     int minCountLabel;
@@ -44,6 +45,7 @@ class Args {
     std::string label;
     int verbose;
     std::string pretrainedVectors;
+    int saveOutput;
 
     void parseArgs(int, char**);
     void printHelp();

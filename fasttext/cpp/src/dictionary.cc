@@ -85,10 +85,27 @@ const std::vector<int32_t> Dictionary::getNgrams(const std::string& word) const 
   return ngrams;
 }
 
+void Dictionary::getNgrams(const std::string& word,
+                           std::vector<int32_t>& ngrams,
+                           std::vector<std::string>& substrings) const {
+  int32_t i = getId(word);
+  ngrams.clear();
+  substrings.clear();
+  if (i >= 0) {
+    ngrams.push_back(i);
+    substrings.push_back(words_[i].word);
+  } else {
+    ngrams.push_back(-1);
+    substrings.push_back(word);
+  }
+  computeNgrams(BOW + word + EOW, ngrams, substrings);
+}
+
 bool Dictionary::discard(int32_t id, real rand) const {
   assert(id >= 0);
   assert(id < nwords_);
-  if (args_->model == model_name::sup) return false;
+  if (args_->model == model_name::sup || args_->model == model_name::sent2vec)
+    return false;
   return rand > pdiscard_[id];
 }
 
@@ -109,6 +126,18 @@ std::string Dictionary::getWord(int32_t id) const {
   return words_[id].word;
 }
 
+int64_t Dictionary::getTokenCount(int32_t id) const {
+    assert(id >= 0);
+    assert(id < size_);
+    return words_[id].count;
+}
+
+real Dictionary::getPDiscard(int32_t id) const {
+    assert(id >= 0);
+    assert(id < size_);
+    return pdiscard_[id];
+}
+
 uint32_t Dictionary::hash(const std::string& str) const {
   uint32_t h = 2166136261;
   for (size_t i = 0; i < str.size(); i++) {
@@ -116,6 +145,26 @@ uint32_t Dictionary::hash(const std::string& str) const {
     h = h * 16777619;
   }
   return h;
+}
+
+void Dictionary::computeNgrams(const std::string& word,
+                               std::vector<int32_t>& ngrams,
+                               std::vector<std::string>& substrings) const {
+  for (size_t i = 0; i < word.size(); i++) {
+    std::string ngram;
+    if ((word[i] & 0xC0) == 0x80) continue;
+    for (size_t j = i, n = 1; j < word.size() && n <= args_->maxn; n++) {
+      ngram.push_back(word[j++]);
+      while (j < word.size() && (word[j] & 0xC0) == 0x80) {
+        ngram.push_back(word[j++]);
+      }
+      if (n >= args_->minn && !(n == 1 && (i == 0 || j == word.size()))) {
+        int32_t h = hash(ngram) % args_->bucket;
+        ngrams.push_back(nwords_ + h);
+        substrings.push_back(ngram);
+      }
+    }
+  }
 }
 
 void Dictionary::computeNgrams(const std::string& word,
@@ -183,9 +232,22 @@ void Dictionary::readFromFile(std::istream& in) {
       threshold(minThreshold, minThreshold);
     }
   }
+  if (args_->model == model_name::sent2vec) {
+    int32_t h = find("<PLACEHOLDER>");
+    entry e;
+    e.word = "<PLACEHOLDER>";
+    e.count = 1e+18;
+    e.type = entry_type::word;
+    words_.push_back(e);
+    word2int_[h] = size_++;
+  }
   threshold(args_->minCount, args_->minCountLabel);
   initTableDiscard();
   initNgrams();
+  if (args_->model == model_name::sent2vec) {
+    assert(words_[0].word == "<PLACEHOLDER>");
+    words_[0].count = 0;
+  }
   if (args_->verbose > 0) {
     std::cout << "\rRead " << ntokens_  / 1000000 << "M words" << std::endl;
     std::cout << "Number of words:  " << nwords_ << std::endl;
@@ -224,8 +286,12 @@ void Dictionary::threshold(int64_t t, int64_t tl) {
 void Dictionary::initTableDiscard() {
   pdiscard_.resize(size_);
   for (size_t i = 0; i < size_; i++) {
-    real f = real(words_[i].count) / real(ntokens_);
-    pdiscard_[i] = sqrt(args_->t / f) + args_->t / f;
+    if (words_[i].count == 0){
+      pdiscard_[i] = 1; //always discard
+    } else {
+      real f = real(words_[i].count) / real(ntokens_);
+      pdiscard_[i] = sqrt(args_->t / f) + args_->t / f;
+    }
   }
 }
 
@@ -248,6 +314,30 @@ void Dictionary::addNgrams(std::vector<int32_t>& line, int32_t n) const {
   }
 }
 
+void Dictionary::addNgrams(std::vector<int32_t>& line, int32_t n, int32_t k, std::minstd_rand& rng) const {
+  int32_t num_discarded = 0;
+  int32_t line_size = line.size();
+  std::vector<bool> discard;
+  discard.resize(line_size, false);
+  std::uniform_int_distribution<> uniform(1, line_size);
+  while (num_discarded < k && line_size - num_discarded > 2) {
+    int32_t token_to_discard = uniform(rng);
+    if (!discard[token_to_discard]) {
+      discard[token_to_discard] = true;
+      num_discarded++;
+    }
+  }
+  for (int32_t i = 0; i < line_size; i++) {
+    if (discard[i]) continue;
+    uint64_t h = line[i];
+    for (int32_t j = i + 1; j < line_size && j < i + n; j++) {
+      if (discard[j]) break;
+      h = h * 116049371 + line[j];
+      line.push_back(nwords_ + (h % args_->bucket));
+    }
+  }
+}
+
 int32_t Dictionary::getLine(std::istream& in,
                             std::vector<int32_t>& words,
                             std::vector<int32_t>& labels,
@@ -262,6 +352,7 @@ int32_t Dictionary::getLine(std::istream& in,
     in.seekg(std::streampos(0));
   }
   while (readWord(in, token)) {
+    if (token == EOS) break;
     int32_t wid = getId(token);
     if (wid < 0) continue;
     entry_type type = getType(wid);
@@ -272,8 +363,9 @@ int32_t Dictionary::getLine(std::istream& in,
     if (type == entry_type::label) {
       labels.push_back(wid - nwords_);
     }
-    if (words.size() > MAX_LINE_SIZE && args_->model != model_name::sup) break;
-    if (token == EOS) break;
+    if (words.size() > MAX_LINE_SIZE && args_->model != model_name::sup &&
+        args_->model != model_name::sent2vec) break;
+    //if (token == EOS) break;
   }
   return ntokens;
 }

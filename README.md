@@ -3,6 +3,10 @@
 fasttext is a Python interface for
 [Facebook fastText](https://github.com/facebookresearch/fastText).
 
+## Patched version to support Sent2vec
+
+Original repo: [epfml/sent2vec](https://github.com/epfml/sent2vec)
+
 ## Requirements
 
 fasttext support Python 2.6 or newer. It requires

@@ -47,6 +47,23 @@ void FastText::saveVectors() {
   ofs.close();
 }
 
+void FastText::saveOutput() {
+  std::ofstream ofs(args_->output + ".output");
+  if (!ofs.is_open()) {
+    std::cout << "Error opening file for saving vectors." << std::endl;
+    exit(EXIT_FAILURE);
+  }
+  ofs << dict_->nwords() << " " << args_->dim << std::endl;
+  Vector vec(args_->dim);
+  for (int32_t i = 0; i < dict_->nwords(); i++) {
+    std::string word = dict_->getWord(i);
+    vec.zero();
+    vec.addRow(*output_, i);
+    ofs << word << " " << vec << std::endl;
+  }
+  ofs.close();
+}
+
 void FastText::saveModel() {
   std::ofstream ofs(args_->output + ".bin", std::ofstream::binary);
   if (!ofs.is_open()) {
@@ -143,6 +160,20 @@ void FastText::skipgram(Model& model, real lr,
   }
 }
 
+void FastText::sent2vec(Model& model, real lr, const std::vector<int32_t>& line){
+  if (line.size() <= 1) return;
+  std::vector<int32_t> context;
+  std::uniform_real_distribution<> uniform(0, 1);
+  for (int32_t i=0; i<line.size(); ++i){
+    if (uniform(model.rng) > dict_->getPDiscard(line[i]) || dict_->getTokenCount(line[i]) < args_->minCountLabel)
+      continue;
+    context = line;
+    context[i] = 0;
+    dict_->addNgrams(context, args_->wordNgrams, args_->dropoutK, model.rng);
+    model.update(context, line[i], lr);
+  }
+}
+
 void FastText::test(std::istream& in, int32_t k) {
   int32_t nexamples = 0, nlabels = 0;
   double precision = 0.0;
@@ -215,6 +246,20 @@ void FastText::wordVectors() {
   }
 }
 
+void FastText::ngramVectors(std::string word) {
+  std::vector<int32_t> ngrams;
+  std::vector<std::string> substrings;
+  Vector vec(args_->dim);
+  dict_->getNgrams(word, ngrams, substrings);
+  for (int32_t i = 0; i < ngrams.size(); i++) {
+    vec.zero();
+    if (ngrams[i] >= 0) {
+      vec.addRow(*input_, ngrams[i]);
+    }
+    std::cout << substrings[i] << " " << vec << std::endl;
+  }
+}
+
 void FastText::textVectors() {
   std::vector<int32_t> line, labels;
   Vector vec(args_->dim);
@@ -233,7 +278,7 @@ void FastText::textVectors() {
 }
 
 void FastText::printVectors() {
-  if (args_->model == model_name::sup) {
+  if (args_->model == model_name::sup || args_->model == model_name::sent2vec) {
     textVectors();
   } else {
     wordVectors();
@@ -261,6 +306,8 @@ void FastText::trainThread(int32_t threadId) {
     if (args_->model == model_name::sup) {
       dict_->addNgrams(line, args_->wordNgrams);
       supervised(model, lr, line, labels);
+    } else if (args_->model == model_name::sent2vec) {
+      sent2vec(model, lr, line);
     } else if (args_->model == model_name::cbow) {
       cbow(model, lr, line);
     } else if (args_->model == model_name::sg) {
@@ -363,8 +410,11 @@ void FastText::train(std::shared_ptr<Args> args) {
   model_ = std::make_shared<Model>(input_, output_, args_, 0);
 
   saveModel();
-  if (args_->model != model_name::sup) {
+  if (args_->model != model_name::sup && args_->model != model_name::sent2vec) {
     saveVectors();
+    if (args_->saveOutput > 0) {
+      saveOutput();
+    }
   }
 }
 

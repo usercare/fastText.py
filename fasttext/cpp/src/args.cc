@@ -20,6 +20,7 @@ Args::Args() {
   lr = 0.05;
   dim = 100;
   ws = 5;
+  dropoutK = 0;
   epoch = 5;
   minCount = 5;
   minCountLabel = 0;
@@ -36,6 +37,7 @@ Args::Args() {
   label = "__label__";
   verbose = 2;
   pretrainedVectors = "";
+  saveOutput = 0;
 }
 
 void Args::parseArgs(int argc, char** argv) {
@@ -49,6 +51,15 @@ void Args::parseArgs(int argc, char** argv) {
     lr = 0.1;
   } else if (command == "cbow") {
     model = model_name::cbow;
+  } else if (command == "sent2vec") {
+    model = model_name::sent2vec;
+    loss = loss_name::ns;
+    neg = 10;
+    minCount = 5;
+    minn = 0;
+    maxn = 0;
+    lr = 0.2;
+    dropoutK = 2;
   }
   int ai = 2;
   while (ai < argc) {
@@ -83,8 +94,11 @@ void Args::parseArgs(int argc, char** argv) {
       minCountLabel = atoi(argv[ai + 1]);
     } else if (strcmp(argv[ai], "-neg") == 0) {
       neg = atoi(argv[ai + 1]);
+    } else if (strcmp(argv[ai], "-dropoutK") == 0) {
+      dropoutK = atoi(argv[ai + 1]);
     } else if (strcmp(argv[ai], "-wordNgrams") == 0) {
       wordNgrams = atoi(argv[ai + 1]);
+      if (wordNgrams == 1) bucket = 1;
     } else if (strcmp(argv[ai], "-loss") == 0) {
       if (strcmp(argv[ai + 1], "hs") == 0) {
         loss = loss_name::hs;
@@ -113,6 +127,8 @@ void Args::parseArgs(int argc, char** argv) {
       verbose = atoi(argv[ai + 1]);
     } else if (strcmp(argv[ai], "-pretrainedVectors") == 0) {
       pretrainedVectors = std::string(argv[ai + 1]);
+    } else if (strcmp(argv[ai], "-saveOutput") == 0) {
+      saveOutput = atoi(argv[ai + 1]);
     } else {
       std::cout << "Unknown argument: " << argv[ai] << std::endl;
       printHelp();
@@ -156,8 +172,10 @@ void Args::printHelp() {
     << "  -thread             number of threads [" << thread << "]\n"
     << "  -t                  sampling threshold [" << t << "]\n"
     << "  -label              labels prefix [" << label << "]\n"
+    << "  -dropoutK           number of ngrams dropped when training a sent2vec model [" << dropoutK << "]\n"
     << "  -verbose            verbosity level [" << verbose << "]\n"
-    << "  -pretrainedVectors  pretrained word vectors for supervised learning []"
+    << "  -pretrainedVectors  pretrained word vectors for supervised learning []\n"
+    << "  -saveOutput         whether output params should be saved [" << saveOutput << "]\n"
     << std::endl;
 }
 
