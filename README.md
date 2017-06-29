@@ -7,6 +7,14 @@ fasttext is a Python interface for
 
 Original repo: [epfml/sent2vec](https://github.com/epfml/sent2vec)
 
+Usage:
+
+```python
+  >>> text = "How can I activate Siri?"
+  >>> model = ft.load_modelwrapper("./models/sent2vec_wiki_unigrams")
+  >>> model.get_sentvector(text, "utf-8")
+```
+
 ## Requirements
 
 fasttext support Python 2.6 or newer. It requires
